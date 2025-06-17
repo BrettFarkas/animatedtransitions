@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Canvas Menu → Sections (News, Movies, Finance)</title>
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; height: 100vh; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <script>
+    let canvas, ctx;
+    let circles = [], menuCircles = [];
+    let state = 'menu';    // 'menu' | 'transition' | 'section' | 'back'
+    let activeIndex = null;
+    let transitionStart = 0;
+    const TRANSITION_DURATION = 1000;
+    let items = [];
+
+    function init() {
+      canvas = document.getElementById('gameCanvas');
+      resize(); window.addEventListener('resize', resize);
+      ctx = canvas.getContext('2d');
+
+      const cx = canvas.width / 2;
+      const spacing = 120, r = 60;
+      const midY = canvas.height / 2;
+      menuCircles = [
+        { x: cx, y: midY - spacing, label: 'News',    radius: r },
+        { x: cx, y: midY,           label: 'Movies',  radius: r },
+        { x: cx, y: midY + spacing, label: 'Finance', radius: r }
+      ];
+      resetMenu();
+
+      canvas.addEventListener('click', onClick);
+      requestAnimationFrame(loop);
+    }
+
+    function resetMenu() {
+      circles = menuCircles.map(c => ({ ...c }));
+      items = [];
+      state = 'menu';
+      activeIndex = null;
+    }
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    function onClick(e) {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      circles.forEach((c, i) => {
+        if (Math.hypot(mx - c.x, my - c.y) < c.radius) {
+          if (state === 'menu') {
+            activeIndex = i;
+            startTransition();
+          } else if (state === 'section' && i === activeIndex && c.label === 'Back') {
+            startBack();
+          }
+        }
+      });
+    }
+
+    function startTransition() {
+      state = 'transition';
+      transitionStart = performance.now();
+      prepareItems();
+    }
+
+    function startBack() {
+      state = 'back';
+      transitionStart = performance.now();
+    }
+
+    function loop(ts) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (state === 'menu') {
+        drawMenu();
+      }
+      else if (state === 'transition') {
+        const t = Math.min((ts - transitionStart) / TRANSITION_DURATION, 1);
+        animateTransition(t);
+        updateItems(); drawItems();
+        if (t >= 1) {
+          finalizeSection();
+          state = 'section';
+        }
+      }
+      else if (state === 'section') {
+        updateItems(); drawItems();
+      }
+      else if (state === 'back') {
+        const t = Math.min((ts - transitionStart) / TRANSITION_DURATION, 1);
+        animateBack(t);
+        updateItemsBack(); drawItems();
+        if (t >= 1) {
+          resetMenu();
+        }
+      }
+      requestAnimationFrame(loop);
+    }
+
+    function drawMenu() {
+      circles.forEach(c => drawCircle(c.x, c.y, c.radius, c.label));
+    }
+
+    function animateTransition(t) {
+      const easeOut = t => t * (2 - t);
+      const easeIn  = t => t * t;
+      circles.forEach((c, i) => {
+        const start = menuCircles[i];
+        let cx = start.x, cy = start.y;
+        if (i === activeIndex) {
+          const tx = start.radius + 20;
+          const ty = start.radius + 20;
+          cx = start.x + (tx - start.x) * easeOut(t);
+          cy = start.y + (ty - start.y) * easeOut(t);
+        } else {
+          const ty = canvas.height + start.radius * 2;
+          cy = start.y + (ty - start.y) * easeIn(t);
+        }
+        drawCircle(cx, cy, start.radius, start.label);
+      });
+    }
+
+    function animateBack(t) {
+      const easeOut = t => t * (2 - t);
+      const easeIn  = t => t * t;
+      circles.forEach((c, i) => {
+        const target = menuCircles[i];
+        let cx, cy;
+        if (i === activeIndex) {
+          // drift back to center
+          const sx = target.radius + 20;
+          const sy = target.radius + 20;
+          cx = sx + (target.x - sx) * easeOut(t);
+          cy = sy + (target.y - sy) * easeOut(t);
+        } else {
+          // fall from top
+          const sx = target.x;
+          const sy = -target.radius * 2;
+          cx = target.x;
+          cy = sy + (target.y - sy) * easeIn(t);
+        }
+        drawCircle(cx, cy, target.radius, menuCircles[i].label);
+      });
+    }
+
+    function drawCircle(x, y, r, text) {
+      ctx.fillStyle = 'red'; ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = 'white'; ctx.font = '20px Arial';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(text, x, y);
+    }
+
+    function prepareItems() {
+      let list = [];
+      if (activeIndex === 0) list = ['this is headline 1','breaking: headline 2','update: headline 3','story: headline 4'];
+      else if (activeIndex === 1) list = ['Movie: Feature 1','Movie: Feature 2','Movie: Feature 3','Movie: Feature 4'];
+      else if (activeIndex === 2) list = ['AAPL: $150.00','GOOG: $2800.00','AMZN: $3400.00','TSLA: $700.00'];
+      const gap = 60, startY = 100;
+      items = list.map((txt,i) => ({ text: txt, x: canvas.width/2, y: -gap*(i+1), targetY: startY+i*gap }));
+    }
+
+    function finalizeSection() {
+      const c = circles[activeIndex];
+      c.label = 'Back'; c.x = c.radius + 20; c.y = c.radius + 20;
+    }
+
+    function updateItems() {
+      const speed = 15;
+      items.forEach(it => { if (it.y < it.targetY) it.y = Math.min(it.y + speed, it.targetY); });
+      if (state === 'section') {
+        const c = circles[activeIndex];
+        drawCircle(c.x, c.y, c.radius, c.label);
+      }
+    }
+
+    function updateItemsBack() {
+      const speed = 15;
+      items.forEach(it => { it.y += speed; });
+    }
+
+    function drawItems() {
+      ctx.fillStyle = 'black'; ctx.font = '24px Arial'; ctx.textAlign = 'center';
+      items.forEach(it => ctx.fillText(it.text, it.x, it.y));
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
